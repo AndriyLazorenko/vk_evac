@@ -1,11 +1,14 @@
 import csv
+import json
 
 import vkontakte
 
-# vk = vkontakte.API('6034923', 'IdQn7QURhX7UjgSibhPR')
 
-# First, authenticate with app
-vk = vkontakte.API(token='7e6abd6473edafccd2cf1600c073c785c3ac163f3bff505d50a3bb0e48a11a9a85da9f2ae10e7dcdd5517')
+# First, authenticate with app (see readme for reference)
+with open('resources/token.json') as data_file:
+    data = json.load(data_file)
+token = data['token']
+vk = vkontakte.API(token=token)
 
 
 # Some demo functions for debug
@@ -74,4 +77,4 @@ def get_groups():
 
 
 # get_friends_phones()
-# get_groups()
+get_groups()
