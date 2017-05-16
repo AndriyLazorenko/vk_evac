@@ -16,6 +16,7 @@ vk = vkontakte.API(token=token)
 # var = vk.get('getProfiles', uids='1,2')
 # var = vk.get('friends.get', fields='name')
 
+# Method for working with russian text
 def write_unicode(text, charset='utf-8'):
     return text.encode(charset)
 
