@@ -8,15 +8,15 @@ from pprint import pprint
 from selenium import webdriver
 from browsermobproxy import Server
 
-
 py_location = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 src_path = os.path.join(py_location, 'src')
 CHROMEDRIVER_PATH = os.path.join(src_path, 'chromedriver')
 BROWSERMOBPROXY_PATH = os.path.join(src_path, 'browsermob-proxy-2.1.4/bin/browsermob-proxy')
+PAUSE_TIME = 0.5
 
 
 class Parser():
-    def __init__(self, url, user, password, folder: str=''):
+    def __init__(self, url, user, password, folder: str = ''):
         self.folder = folder or py_location
         self._user = user
         self._password = password
@@ -27,6 +27,7 @@ class Parser():
         self.audio_pattern = re.compile(r'(audio_-\d*_\d*)')
         self.filename_pattern = re.compile(r'(?<=audios-)\d*(?=\?)')
         self.fieldnames = ['name', 'performer', 'url']
+        self.browser_pause_time = PAUSE_TIME
 
         audios_number = self.filename_pattern.search(self.url).group()
         self.filename = 'audios_list_{}.csv'.format(audios_number)
@@ -57,13 +58,13 @@ class Parser():
             password.send_keys(self._password)
 
             self.browser.find_element_by_id("login_button").click()
-            time.sleep(3)
+            time.sleep(self.browser_pause_time * 4)
             self.scroll_down()
 
             self.parse_audio_names()
 
             self.click_on_all_audios()
-            time.sleep(3)
+            time.sleep(self.browser_pause_time * 4)
             self.all_requests = [entry['request']['url'] for entry in self.proxy.har['log']['entries']]
 
             self.filter_music()
@@ -110,11 +111,10 @@ class Parser():
         r = re.compile("mp3\?extra=")
         pprint(self.all_requests)
         self.music_urls = filter(r.search, self.all_requests)
+        # TODO: fix possible bug - it seems like self.music_urls can be LESSER than self.audios
         self.music_urls_dict = dict(zip(self.audios, self.music_urls))
 
     def scroll_down(self):
-        SCROLL_PAUSE_TIME = 0.5
-
         # Get scroll height
         last_height = self.browser.execute_script("return document.body.scrollHeight")
 
@@ -123,7 +123,7 @@ class Parser():
             self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
             # Wait to load page
-            time.sleep(SCROLL_PAUSE_TIME)
+            time.sleep(self.browser_pause_time)
 
             # Calculate new scroll height and compare with last scroll height
             new_height = self.browser.execute_script("return document.body.scrollHeight")
@@ -134,6 +134,7 @@ class Parser():
 
 
 def main():
+    # TODO: add proper command line arguments
     url = 'https://vk.com/audios-1035609?section=all'
     parser = Parser(url, user="VK_USERNAME", password="VK_PASSWORD")
     parser.run()
