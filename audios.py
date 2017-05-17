@@ -144,7 +144,7 @@ def main():
     # TODO: add proper command line arguments
     # url = 'https://vk.com/audios-1035609?section=all'
     url = 'https://vk.com/audios212028808?section=playlists&z=audio_playlist-1035609_3156335'
-    parser = Parser(url, user="380668483104", password="fl4*9SM2n6")
+    parser = Parser(url, user="VK_USERNAME", password="VK_PASSWORD")
     parser.run()
 
     print('All audios might have been downloaded successfully :)')
