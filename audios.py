@@ -69,6 +69,7 @@ class Parser():
 
             self.filter_music()
             self.build_download_csv()
+        self.download_audios()
 
     def build_download_csv(self):
         with open(self.filename, 'w') as csv_file:
