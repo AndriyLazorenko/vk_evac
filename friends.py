@@ -31,15 +31,6 @@ def get_friends_phones():
     f = csv.writer(open("friends.csv", "wb+"))
     f.writerow(["name", "surname", "home_phone", "mobile"])
     for c in cont:
-        try:
-            print c["home_phone"]
-        except:
-            c["home_phone"] = 'missing'
-        try:
-            print c["mobile_phone"]
-        except:
-            c["mobile_phone"] = 'missing'
-
         for key in c:
             if type(c[key]) != int:
                 if type(c[key]) != list:
@@ -48,8 +39,8 @@ def get_friends_phones():
 
         f.writerow([c["first_name"],
                     c["last_name"],
-                    c["mobile_phone"],
-                    c["home_phone"]])
+                    c.get("mobile_phone", "missing"),
+                    c.get("home_phone", "missing")])
 
 
 def get_groups():
