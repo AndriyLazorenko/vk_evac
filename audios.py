@@ -7,6 +7,7 @@ from pprint import pprint
 
 from selenium import webdriver
 from browsermobproxy import Server
+from slugify import slugify
 
 py_location = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 src_path = os.path.join(py_location, 'src')
@@ -25,7 +26,7 @@ class Parser():
             r'(?<=class="audio_title_inner" tabindex="0" nodrag="1" aria-label=")[^"]*')
         self.audio_performer_pattern = re.compile(r'(?<=class="audio_performer">)[^<]*')
         self.audio_pattern = re.compile(r'(audio_-\d*_\d*)')
-        self.filename_pattern = re.compile(r'(?<=audios-)\d*(?=\?)')
+        self.filename_pattern = re.compile(r'(?<=audios)-?\d*(?=\?)')
         self.fieldnames = ['name', 'performer', 'url']
         self.browser_pause_time = PAUSE_TIME
 
@@ -100,12 +101,17 @@ class Parser():
     def download_audios(self):
         with open(self.filename, 'r') as csv_file:
             reader = csv.DictReader(csv_file)
-            for row in reader:
-                filename = '{}_{}.mp3'.format(row.get('name'),
+            for i, row in enumerate(reader):
+                filename = '{}_{}'.format(row.get('name'),
                                               row.get('performer'))
+                filename = slugify(filename) + '.mp3'
                 print(filename)
                 if not os.path.isfile(filename):
                     os.system("gnome-terminal -e 'bash -c \"wget -O {} {}\"'".format(filename, row.get('url')))
+                # TODO: important part, as we may not want to download *all* files simultaneously
+                time.sleep(PAUSE_TIME)
+                if i % 20 == 0:
+                    time.sleep(5)
 
     def filter_music(self):
         import re
@@ -136,12 +142,12 @@ class Parser():
 
 def main():
     # TODO: add proper command line arguments
-    url = 'https://vk.com/audios-1035609?section=all'
-    parser = Parser(url, user="VK_USERNAME", password="VK_PASSWORD")
+    # url = 'https://vk.com/audios-1035609?section=all'
+    url = 'https://vk.com/audios212028808?section=playlists&z=audio_playlist-1035609_3156335'
+    parser = Parser(url, user="380668483104", password="fl4*9SM2n6")
     parser.run()
 
     print('All audios might have been downloaded successfully :)')
-    input('Press any key to continue...')
 
 
 if __name__ == '__main__':

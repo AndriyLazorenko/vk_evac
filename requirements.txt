@@ -4,3 +4,4 @@ python==2.7.13
 
 selenium==2.53.2
 browsermob-proxy==0.8.0
+awesome-slugify==1.6.5
