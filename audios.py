@@ -7,7 +7,7 @@ from pprint import pprint
 
 from selenium import webdriver
 from browsermobproxy import Server
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from slugify import slugify
 
 py_location = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
@@ -19,18 +19,23 @@ PAUSE_TIME = 0.5
 
 class Parser():
     def __init__(self, url, user, password, folder: str = ''):
+        self.rows = []
         self.folder = folder or py_location
         self._user = user
         self._password = password
         self.url = url
+        self.mp3_url_pattern = re.compile("mp3\?extra=")
         self.audio_name_pattern = re.compile(
             r'(?<=class="audio_title_inner" tabindex="0" nodrag="1" aria-label=")[^"]*')
         self.audio_performer_pattern = re.compile(r'(?<=class="audio_performer">)[^<]*')
         self.audio_pattern = re.compile(r'(audio_-\d*_\d*)')
-        self.filename_pattern = re.compile(r'(?<=audios)-\d*(?=\?)')
+        self.filename_pattern = re.compile(r'(?<=audios)-\d*')
         self.filename_playlist_pattern = re.compile(r'(?<=audio)_playlist-\d*_?\d*')
         self.fieldnames = ['name', 'performer', 'url']
         self.browser_pause_time = PAUSE_TIME
+        self.used_urls = set()
+        self.used_audios = set()
+        self.all_requests = []
 
         try:
             audios_number = self.filename_pattern.search(self.url).group()
@@ -58,59 +63,57 @@ class Parser():
         else:
             self.browser.get(self.url)
 
-            username = self.browser.find_element_by_id("email")
-            password = self.browser.find_element_by_id("pass")
+            self.login()
 
-            username.send_keys(self._user)
-            password.send_keys(self._password)
-
-            self.browser.find_element_by_id("login_button").click()
-            time.sleep(self.browser_pause_time * 4)
             self.scroll_down()
-            time.sleep(self.browser_pause_time * 8)
-
-            self.parse_audio_names()
-            # back to top:
             self.scroll_top()
 
-            self.click_on_all_audios()
-            time.sleep(self.browser_pause_time * 4)
-            self.all_requests = [entry['request']['url'] for entry in self.proxy.har['log']['entries']]
+            self.parse_audio_names()
+            self.take_audios()
 
-            self.filter_music()
-            self.build_download_csv()
+
             print('Spreadsheet with music urls created successfully.')
 
-    def build_download_csv(self):
+    def login(self):
+        username = self.browser.find_element_by_id("email")
+        password = self.browser.find_element_by_id("pass")
+        username.send_keys(self._user)
+        password.send_keys(self._password)
+        self.browser.find_element_by_id("login_button").click()
+        time.sleep(self.browser_pause_time * 4)
+
+    def take_audios(self):
         with open(self.spreadsheet_filename, 'w') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=self.fieldnames)
             writer.writeheader()
-            for audio in self.audios:
-                row = {'name': self.audio_names_dict.get(audio)}
-                row['performer'] = self.audio_performers_dict.get(audio)
-                row['url'] = self.music_urls_dict.get(audio)
+            for audio, name, performer in self.audio_names_performers:
+                if audio in self.used_audios:
+                    continue
+                self.click_on_specific_audio(audio)
+                time.sleep(self.browser_pause_time)
+                new_url = self.filter_new_mp3_url()
+                row = {'name': name.group()}
+                row['performer'] = performer.group()
+                row['url'] = new_url
+                self.rows.append(row)
+                print(row)
                 writer.writerow(row)
+                self.used_urls.add(new_url)
+                self.used_audios.add(audio)
 
     def parse_audio_names(self):
-        self.audios = re.findall(self.audio_pattern, self.browser.page_source)
-        self.audio_names = re.findall(self.audio_name_pattern, self.browser.page_source)
-        self.audio_performers = re.findall(self.audio_performer_pattern, self.browser.page_source)
-        self.audio_names_dict = dict(zip(self.audios, self.audio_names))
-        self.audio_performers_dict = dict(zip(self.audios, self.audio_performers))
-        # pprint(self.audio_names_dict)
-        # pprint(self.audio_performers_dict)
-
-    def click_on_all_audios(self):
-        for audio in self.audios:
-            self.click_on_specific_audio(audio)
+        self.audios = re.finditer(self.audio_pattern, self.browser.page_source)
+        self.audio_names = re.finditer(self.audio_name_pattern, self.browser.page_source)
+        self.audio_performers = re.finditer(self.audio_performer_pattern, self.browser.page_source)
+        self.audio_names_performers = zip(self.audios, self.audio_names, self.audio_performers)
 
     def click_on_specific_audio(self, audio):
         while True:
             try:
-                xpath = '//*[@id="{}"]/div/div[2]/div[3]'.format(audio)
+                xpath = '//*[@id="{}"]/div/div[2]/div[3]'.format(audio.group())
                 a = self.browser.find_element_by_xpath(xpath)
                 a.click()
-                time.sleep(self.browser_pause_time / 2)
+                time.sleep(self.browser_pause_time * 2)
                 break
             except NoSuchElementException:
                 # if unable to locate element, brobably we should scroll down to find it
@@ -121,18 +124,26 @@ class Parser():
                 new_height = self.browser.execute_script("return document.body.scrollHeight")
                 if last_height == new_height:  # check if we stopped scrolling
                     break
+            except WebDriverException as err:
+                print(err)
+                wait_time = self.browser_pause_time * 10
+                print('waiting for {} s...'.format(wait_time))
+                time.sleep(wait_time)
+                # TODO: add counter here to break out of infinite loop if any
 
     def download_audios(self):
+        print('Starting to dowload audios...')
         with open(self.spreadsheet_filename, 'r') as csv_file:
             reader = csv.DictReader(csv_file)
             for i, row in enumerate(reader):
-                performer_folder = slugify(row.get('name'))
+                performer_folder = slugify(row.get('performer'))
                 performer_folder_path = os.path.join(self.folder, performer_folder)
+                if not os.path.exists(performer_folder_path):
+                    os.mkdir(performer_folder_path)
                 filename = '{}_{}'.format(row.get('name'),
                                           row.get('performer'))
                 filename = slugify(filename) + '.mp3'
                 filename = os.path.join(performer_folder_path, filename)
-                # print(filename)
                 if not os.path.isfile(filename):
                     os.system("gnome-terminal -e 'bash -c \"wget -O {} {}\"'".format(filename, row.get('url')))
                 # TODO: important part, as we may not want to download *all* files simultaneously
@@ -140,14 +151,6 @@ class Parser():
                 if i % 20 == 0:
                     time.sleep(5)
         print('All audios might have been downloaded successfully :)')
-
-    def filter_music(self):
-        import re
-        r = re.compile("mp3\?extra=")
-        # pprint(self.all_requests)
-        self.music_urls = filter(r.search, self.all_requests)
-        # TODO: fix possible bug - it seems like self.music_urls can be LESSER than self.audios
-        self.music_urls_dict = dict(zip(self.audios, self.music_urls))
 
     def scroll_top(self):
         self.browser.execute_script("window.scrollTo(0, -document.body.scrollHeight);")
@@ -160,34 +163,41 @@ class Parser():
         while True:
             # Scroll down to bottom
             self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
             # Wait to load page
             time.sleep(self.browser_pause_time)
-
             # Calculate new scroll height and compare with last scroll height
             new_height = self.browser.execute_script("return document.body.scrollHeight")
             if new_height == last_height:
                 time.sleep(self.browser_pause_time)
                 c += 1
                 if c == 3:
+                    time.sleep(self.browser_pause_time * 8)
                     break
             last_height = new_height
             # self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
+    def filter_new_mp3_url(self):
+        while True:
+            try:
+                self.all_requests = [entry['request']['url'] for entry in self.proxy.har['log']['entries']]
+                music_urls = filter(self.mp3_url_pattern.search, self.all_requests)
+                new_url = list(filter(lambda x: x not in self.used_urls, music_urls))
+                assert len(new_url) == 1, 'there should be only one\n{}'.format(new_url)
+                return new_url[0]
+            except AssertionError:
+                time.sleep(self.browser_pause_time)
+                # TODO: add counter here to break out of infinite loop if any
 
 def main():
-    # TODO: add proper command line arguments
-    url = 'https://vk.com/audios-1035609?section=all'
-    # url = 'https://vk.com/audios212028808?section=playlists&z=audio_playlist-1035609_3156335'
-    # url = 'https://vk.com/audio?z=audio_playlist-1035609_2574222'
+    url = 'https://vk.com/audios-1035609?section=all'  # smooth_jazz
+    # url = 'https://vk.com/audios-1196279'  # Кому Вниз
     parser = Parser(url,
                     user="VK_USERNAME",
                     password="VK_PASSWORD",
                     folder='music_files')
     parser.create_csv_for_download()
-
-    # TODO: if you want to actually download all files, please set download_at_once to true.
-    # TODO: otherwise only csv with audio_url will be created
+    # TODO: if you want to actually DOWNLOAD all files, please set download_at_once to true.
+    # TODO: otherwise only csv with audio urls will be created
     download_at_once = False
     if download_at_once:
         parser.download_audios()
