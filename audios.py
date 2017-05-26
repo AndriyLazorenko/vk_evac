@@ -15,11 +15,12 @@ src_path = os.path.join(py_location, 'src')
 CHROMEDRIVER_PATH = os.path.join(src_path, 'chromedriver')
 BROWSERMOBPROXY_PATH = os.path.join(src_path, 'browsermob-proxy-2.1.4/bin/browsermob-proxy')
 PAUSE_TIME = 0.5
+# os.environ.setdefault('https_proxy', 'https://212.237.36.33:8080')
 
 
 class Parser():
     def __init__(self, url, user, password, folder: str = ''):
-        self.rows = []
+        self.rows = {}
         self.folder = folder or py_location
         self._user = user
         self._password = password
@@ -31,7 +32,7 @@ class Parser():
         self.audio_pattern = re.compile(r'(audio_-\d*_\d*)')
         self.filename_pattern = re.compile(r'(?<=audios)-\d*')
         self.filename_playlist_pattern = re.compile(r'(?<=audio)_playlist-\d*_?\d*')
-        self.fieldnames = ['name', 'performer', 'url']
+        self.fieldnames = ['name', 'performer', 'url', 'audio_tag']
         self.browser_pause_time = PAUSE_TIME
         self.used_urls = set()
         self.used_audios = set()
@@ -53,13 +54,15 @@ class Parser():
         self.proxy = server.create_proxy({'captureHeaders': True, 'captureContent': True, 'captureBinaryContent': True})
         service_args = ["--proxy=%s" % self.proxy.proxy, '--ignore-ssl-errors=yes']
         chrome_options = webdriver.ChromeOptions()
-        chrome_options.add_argument("--proxy-server={0}".format(self.proxy.proxy))
+        # chrome_options.add_argument("--proxy-server={}".format('212.237.36.33:8080'))
+        chrome_options.add_argument("--proxy-server={}".format(self.proxy.proxy))
         self.browser = webdriver.Chrome(CHROMEDRIVER_PATH, service_args=service_args, chrome_options=chrome_options)
         self.proxy.new_har()
 
     def create_csv_for_download(self):
         if os.path.exists(self.spreadsheet_filename):
-            print('Spreadsheet with urls seems to exist in the folder...')
+            pass
+            # print('Spreadsheet with urls seems to exist in the folder...')
         else:
             self.browser.get(self.url)
 
@@ -69,6 +72,7 @@ class Parser():
             self.scroll_top()
 
             self.parse_audio_names()
+            self.load_existing_records()
             self.take_audios()
 
 
@@ -87,7 +91,7 @@ class Parser():
             writer = csv.DictWriter(csv_file, fieldnames=self.fieldnames)
             writer.writeheader()
             for audio, name, performer in self.audio_names_performers:
-                if audio in self.used_audios:
+                if audio in self.used_audios or audio in self.rows:
                     continue
                 self.click_on_specific_audio(audio)
                 time.sleep(self.browser_pause_time)
@@ -95,7 +99,8 @@ class Parser():
                 row = {'name': name.group()}
                 row['performer'] = performer.group()
                 row['url'] = new_url
-                self.rows.append(row)
+                row['audio_tag'] = audio
+                self.rows.setdefault(audio, row)
                 print(row)
                 writer.writerow(row)
                 self.used_urls.add(new_url)
@@ -130,6 +135,7 @@ class Parser():
                 print('waiting for {} s...'.format(wait_time))
                 time.sleep(wait_time)
                 # TODO: add counter here to break out of infinite loop if any
+                break
 
     def download_audios(self):
         print('Starting to dowload audios...')
@@ -188,13 +194,21 @@ class Parser():
                 time.sleep(self.browser_pause_time)
                 # TODO: add counter here to break out of infinite loop if any
 
+    def load_existing_records(self):
+        with open(self.spreadsheet_filename, 'r') as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                self.rows.setdefault(row['audio_tag'], row)
+            print('Loaded {} existing records form csv'.format(len(self.rows)))
+
+
 def main():
-    url = 'https://vk.com/audios-1035609?section=all'  # smooth_jazz
-    # url = 'https://vk.com/audios-1196279'  # Кому Вниз
+    # url = 'https://vk.com/audios-1035609?section=all'  # smooth_jazz
+    url = 'https://vk.com/audios-1196279'  # Кому Вниз
     parser = Parser(url,
-                    user="VK_USERNAME",
-                    password="VK_PASSWORD",
-                    folder='music_files')
+                    user="380668483104",
+                    password="fl4*9SM2n6",
+                    folder='/media/shivan/Samsung/MUSIC/SmoothJazz')
     parser.create_csv_for_download()
     # TODO: if you want to actually DOWNLOAD all files, please set download_at_once to true.
     # TODO: otherwise only csv with audio urls will be created
