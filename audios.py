@@ -267,12 +267,11 @@ class Parser():
 
 def main():
     # url = 'https://vk.com/audios-1035609?section=all'  # smooth_jazz
-    # url = 'https://vk.com/audios-1196279'  # Кому Вниз
-    url = 'https://vk.com/audios111954336'  # Яни
+    url = 'https://vk.com/audios-1196279'  # Кому Вниз
     parser = Parser(url,
-                    user="380668483104",
-                    password="fl4*9SM2n6",
-                    folder='/media/shivan/7C40325F40322076/2_MUSIC/Yana')
+                    user="USERNAME",
+                    password="PASSWORD",
+                    folder='/path/to/folder')
     parser.create_csv_for_download()
     # TODO: if you want to actually DOWNLOAD all files, please set download_at_once to true.
     # TODO: otherwise only csv with audio urls will be created
